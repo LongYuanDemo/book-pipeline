@@ -382,7 +382,11 @@ ${scriptPreview}
 要求：
 1. startPercent 是该 Topic/知识点在讲稿中的位置百分比（0-1），用于计算出现时间
 2. 每个 Topic 至少 2 个知识点，整个讲稿至少 3 个 Topic
-3. 知识点文本必须是核心概念或术语，4-12字，不能是讲稿原文片段
+3. **知识点文本必须是核心概念或术语，4-12字**。这是最重要的要求！
+   - ✅ 正确示例："急危重症定义"、"EMSS体系"、"院前急救原则"、"深静脉血栓预防"、"急救医疗调度"
+   - ❌ 错误示例："大家注意"、"顾名思义"、"这一点是很多初学者容易忽略的"、"现在我们讲最后一个任务"
+   - 知识点不能是讲稿原文片段、口语过渡语、语气词、叙述性文字
+   - 知识点应该是教材中的专业术语、概念名称、操作步骤名称
 4. relation 描述该知识点与父节点的关系（如"包含""展开""分类""举例""对比""步骤""定义"等）
 5. Topic 边界在话题转换处（如"接下来""我们来看""总结"等过渡语）
 6. 最后一个 Topic 应为总结/回顾
@@ -399,7 +403,35 @@ ${scriptPreview}
     return null;
   }
 
-  console.log(`[audio-course-generator] ${chapter.id} LLM 提取 ${plan.topics.length} 个 topic，${plan.topics.reduce((s, t) => s + t.knowledgePoints.length, 0)} 个知识点`);
+  // 后处理：过滤口语碎片知识点，只保留专业术语/概念
+  const ORAL_PATTERNS = /^(大家|我们|那么|这个|那个|其实|也就是说|换句话说|顾名思义|当然了|不过|但是|所以|因此|然后|接下来|现在|刚才|前面|后面|这一点|这一点是|这里|那里|你看|你想|你知道|你会发现|你可能会|大家注意|大家一定要|大家可能|同学们|老师|我们来看|我们来说|我们先|我们再|讲一讲|聊一聊|说一下|看一下|了解一下|注意一下|提醒一下|强调一下|总结一下|回顾一下|开始|结束|最后|首先|其次|第一|第二|第三)/;
+  const cleanedTopics = plan.topics.map(topic => ({
+    ...topic,
+    knowledgePoints: topic.knowledgePoints.filter(kp => {
+      const text = kp.text.trim();
+      // 过滤口语开头的
+      if (ORAL_PATTERNS.test(text)) return false;
+      // 过滤过长的（>20字大概率是句子片段）
+      if (text.length > 20) return false;
+      // 过滤含句号的（知识点不应该有句号）
+      if (/[。！？，]/.test(text)) return false;
+      return true;
+    }),
+  })).filter(t => t.knowledgePoints.length > 0);
+
+  if (cleanedTopics.length === 0) {
+    console.log(`[audio-course-generator] ${chapter.id} LLM 知识点全部被过滤（口语碎片），使用规则降级`);
+    return null;
+  }
+
+  const totalPoints = cleanedTopics.reduce((s, t) => s + t.knowledgePoints.length, 0);
+  const removedPoints = plan.topics.reduce((s, t) => s + t.knowledgePoints.length, 0) - totalPoints;
+  if (removedPoints > 0) {
+    console.log(`[audio-course-generator] ${chapter.id} 过滤 ${removedPoints} 个口语碎片知识点，剩余 ${totalPoints} 个`);
+  }
+  plan.topics = cleanedTopics;
+
+  console.log(`[audio-course-generator] ${chapter.id} LLM 提取 ${plan.topics.length} 个 topic，${totalPoints} 个知识点`);
   return plan;
 }
 
