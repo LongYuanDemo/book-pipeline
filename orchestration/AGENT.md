@@ -432,7 +432,7 @@ Agent 拿到此文档后，按以下步骤执行：
 3. 确认 `skills/shared/` 目录存在（types, paths, validator, llm, markdown, coze, deepseek）
 4. 检查 Node.js 和 npm 可用
 5. 检查 `npx tsx` 可用
-6. 检查 `.env` 中至少配置了一个 LLM API Key（DEEPSEEK_API_KEY / ANTHROPIC_API_KEY / COZE_API_KEY）
+6. 检查 `.env` 中至少配置了一个 LLM API Key（DEEPSEEK_API_KEY 或 COZE_API_KEY + COZE_BOT_ID；当前 `shared/llm.ts` 只走 DeepSeek→Coze，未接 Anthropic）
 
 ### Step 2: 创建目录结构
 
@@ -544,7 +544,9 @@ BOOK_ID={bookId} npm run build
 npx tsx orchestration/scripts/run-pipeline.ts --book-id {bookId}
 ```
 
-该脚本会自动按顺序执行 6 个 Skill（不含 source-parser，因为它已集成在 shared 中）。
+该脚本会自动按顺序执行 7 个 Skill（含 source-parser）。注意：`run-pipeline.ts` 走的是
+**简化模式**——不传 `--prompt-file`（用各脚本内置 fallback prompt），也不启用知识地图/AI 增强的
+质量门（`--strict`/`--reflect`）。需要自定义 prompt 或阻塞式质量门时，按上文分步手动调用各脚本。
 
 ### 中断恢复
 
@@ -581,7 +583,7 @@ npx tsx orchestration/scripts/run-pipeline.ts --book-id {bookId}
 | 类型定义 | `skills/shared/types.ts` | SkillContext, SkillResult, ValidationResult |
 | 路径工具 | `skills/shared/paths.ts` | PROJECT_ROOT, getBookDataPath, ensureDir |
 | 校验工具 | `skills/shared/validator.ts` | validateTsFile, validateInterface |
-| LLM 调用 | `skills/shared/llm.ts` | callLLM（优先 Claude → 回退 Coze） |
+| LLM 调用 | `skills/shared/llm.ts` | callLLM → callCoze（DeepSeek → Coze） |
 | DeepSeek 客户端 | `skills/shared/deepseek.ts` | callDeepSeek（OpenAI 兼容接口） |
 | Coze 客户端 | `skills/shared/coze.ts` | callCoze（优先 DeepSeek → 回退 Coze Bot） |
 | Markdown 解析 | `skills/shared/markdown.ts` | readMarkdown, extractTitle, extractSections |

@@ -75,7 +75,7 @@ export interface SourceParsed {
 - 从任务标题到下一个任务/模块标题之间的所有原始内容保留为 `rawContent`
 
 ### 摘要生成
-- 优先调用 LLM（Anthropic Claude → DeepSeek → Coze 回退链）生成结构化摘要
+- 优先调用 LLM（`callLLM` → `callCoze`：DeepSeek → Coze 回退链）生成结构化摘要
 - LLM 不可用时，降级为规则摘要（基于模块目标和任务列表拼接）
 
 ## 用法
@@ -123,8 +123,10 @@ npx tsx skills/source-parser/scripts/parse-source.ts \
 ## LLM 调用链
 
 ```
-callLLM(prompt) → 优先 Anthropic Claude → 回退 callCoze → 优先 DeepSeek → 回退 Coze Bot
+callLLM(prompt) → callCoze → 优先 DeepSeek（DEEPSEEK_API_KEY）→ 回退 Coze Bot（COZE_API_KEY + COZE_BOT_ID）
 ```
+
+> `shared/llm.ts` 目前不含 Anthropic/Claude 直连。
 
 ## 向后兼容
 

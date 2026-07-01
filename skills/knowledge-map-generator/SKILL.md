@@ -9,7 +9,7 @@ description: >-
 metadata:
   author: bookai-team
   version: "2.0"
-compatibility: Requires Node.js 18+, tsx, and access to an LLM API (Kimi/Coze/DeepSeek/Gemini).
+compatibility: Requires Node.js 18+, tsx, and access to an LLM API (DeepSeek → Coze, via skills/shared/llm.ts).
 license: Proprietary
 ---
 

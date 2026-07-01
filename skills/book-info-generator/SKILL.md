@@ -66,11 +66,11 @@ npx tsx skills/book-info-generator/scripts/generate-book-info.ts \
 ## LLM 调用链
 
 ```
-callLLM(prompt) → 优先 Anthropic Claude → 回退 callCoze → 优先 DeepSeek → 回退 Coze Bot
+callLLM(prompt) → callCoze → 优先 DeepSeek（DEEPSEEK_API_KEY）→ 回退 Coze Bot（COZE_API_KEY + COZE_BOT_ID）
 ```
 
-- `ANTHROPIC_API_KEY` 配置时使用 Claude API
-- 未配置时走 `callCoze`，内部优先调用 DeepSeek（`DEEPSEEK_API_KEY`），再回退 Coze Bot
+- `callLLM`（`skills/shared/llm.ts`）内部只调 `callCoze`；`callCoze` 先试 DeepSeek，失败再回退 Coze Bot。
+- 目前**不含 Anthropic/Claude 直连**——如需接入需在 `shared/llm.ts` 增加分支。
 
 ## 降级处理
 
