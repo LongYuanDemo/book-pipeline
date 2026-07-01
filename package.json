@@ -1,0 +1,41 @@
+{
+  "name": "cantonese-cooking-audio-course",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "mermaid": "tsx server/mermaid-server.ts",
+    "start": "tsx server/mermaid-server.ts"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "^1.4.7",
+    "@mermaid-js/layout-elk": "^0.2.1",
+    "@mermaid-js/mermaid-cli": "^11.15.0",
+    "@types/d3": "^7.4.3",
+    "cors": "^2.8.6",
+    "d3": "^7.9.0",
+    "express": "^5.2.1",
+    "lucide-react": "^0.460.0",
+    "mermaid": "^11.15.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.19.0",
+    "undici": "^8.5.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "dotenv": "^17.4.2",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.1"
+  }
+}
