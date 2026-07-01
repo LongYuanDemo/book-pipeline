@@ -35,6 +35,31 @@ JSON/PDF 原始素材
 ## 目录结构
 
 ```
+src/                             # 前端源码（React + TailwindCSS + Vite）
+├── App.tsx                     # 主应用组件
+├── main.tsx                    # 入口文件
+├── index.css                   # 全局样式
+├── components/                 # 通用组件（导航、布局、知识地图等）
+├── pages/                      # 页面组件（首页、Anki、音频课、章节内容等）
+├── pipeline/                   # 流水线追踪页面
+├── hooks/                      # 自定义 Hooks
+├── types/                      # 类型定义
+└── utils/                      # 工具函数
+
+books/critical-care-nursing/     # 示例书籍数据（pipeline 输入输出对照）
+├── source.md                   # 原始 Markdown 源文件
+└── data/                       # pipeline 各环节生成的数据文件
+    ├── bookInfo.ts             # 书籍元数据
+    ├── chapterContent.ts       # 章节内容
+    ├── anki.ts                 # 闪卡数据
+    ├── audioCourse.ts          # 音频课数据
+    ├── knowledgeMap.ts         # 知识地图数据
+    ├── aiEnhancement.ts        # AI 增强数据
+    ├── video.ts                # 视频清单数据
+    └── ...
+
+demo/                           # 成品构建产物（可直接打开 index.html 预览）
+
 skills/                          # 各环节 Skill（AI Agent 可读 + 可执行）
 ├── pipeline.sh                  # 主流水线编排脚本
 ├── pipeline-orchestrator/
@@ -99,9 +124,14 @@ scripts/                         # 辅助脚本
 - **LLM**: DeepSeek / Kimi / Coze（多模型适配）
 - **TTS**: 语音合成 API
 - **ASR**: 语音识别 API（用于音频时间戳对齐）
-- **前端**: React + TailwindCSS + Vite（不在本仓库中）
+- **前端**: React + TailwindCSS + Vite
 
 ## 关于本仓库
 
-本仓库仅包含**制作流水线的脚手架代码**，不含前端应用和已生成的书籍数据。
+本仓库包含完整的**制作流水线脚手架 + 前端源码 + 示例书籍数据 + 成品演示**。
 目的是让 AI Agent（如 Claude）审查流水线设计，评估优化空间。
+
+- `skills/` + `scripts/` — 流水线脚手架
+- `src/` — 前端源码
+- `books/critical-care-nursing/` — 示例书籍数据（pipeline 输入输出对照）
+- `demo/` — 成品构建产物（急危重症护理学，可直接打开 `demo/index.html` 预览效果）
