@@ -1,6 +1,6 @@
 ---
 name: anki-card-generator
-description: 从教材 Markdown 生成闪卡 + 测验题，支持翻转卡、选择题、AI 深度解释，集成到数智教材2.0 前端。参考 NotebookLM 闪卡设计。
+description: 从教材 Markdown 生成闪卡 + 测验题，支持翻转卡、选择题、AI 深度解释，集成到数智教材2.0 前端。参考 NotebookLM 闪卡设计。当需要为一本教材生成 Anki 页所需的闪卡/测验/费曼复述卡数据（anki.ts）时使用。
 ---
 
 # Anki 卡片生成器

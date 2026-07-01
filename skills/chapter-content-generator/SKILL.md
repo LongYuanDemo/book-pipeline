@@ -1,6 +1,6 @@
 ---
 name: chapter-content-generator
-description: 从教材 Markdown 生成交互式章节内容，包含 AI 增强模块（知识拓展、背景信息、操作要点、注意事项）和随堂测验。自动适配任意书籍结构。参考 Kimi V4 阅读体验和 NotebookLM 交互设计。
+description: 从教材 Markdown 生成交互式章节内容，包含 AI 增强模块（知识拓展、背景信息、操作要点、注意事项）和随堂测验。自动适配任意书籍结构。参考 Kimi V4 阅读体验和 NotebookLM 交互设计。当需要为教材阅读页生成章节内容中间产物（chapterContent.ts）与前端消费的 AI 增强浮层（aiEnhancement.ts）时使用。
 ---
 
 # 章节内容生成器

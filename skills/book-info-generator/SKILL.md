@@ -1,6 +1,6 @@
 ---
 name: book-info-generator
-description: 从教材 Markdown 源文件自动生成 bookInfo.ts，包含完整的 BookData 结构（章节、子章节、摘要）。支持职业技能教材和学术著作两种模式。
+description: 从教材 Markdown 源文件自动生成 bookInfo.ts，包含完整的 BookData 结构（章节、子章节、摘要）。支持职业技能教材和学术著作两种模式。当需要生成书籍元数据中枢（bookInfo.ts）、或为下游内容/闪卡/知识地图/音频等 Skill 准备章节结构时使用（本 Skill 同时会对齐 sourceParsed.ts 的 id 到子章节 id）。
 ---
 
 # Book Info Generator — 书籍信息生成器

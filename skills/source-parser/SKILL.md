@@ -1,3 +1,8 @@
+---
+name: source-parser
+description: 将原始教材 Markdown（source.md）解析为结构化数据 sourceParsed.ts（书籍元数据、模块、任务层级），供下游 book-info-generator、chapter-content-generator 等 Skill 消费。当需要把一本教材的原始 Markdown/HTML 加工进流水线、或下游 Skill 找不到 sourceParsed.ts 时使用。
+---
+
 # source-parser
 
 ## 概述
