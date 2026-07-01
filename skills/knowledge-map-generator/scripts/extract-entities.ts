@@ -444,6 +444,7 @@ function deduplicateEntities(entities: KnowledgeEntity[]): KnowledgeEntity[] {
 function computeOccurrences(entities: KnowledgeEntity[], context: BookTextContext): KnowledgeEntity[] {
   for (const e of entities) {
     const occurrences: EntityOccurrence[] = [];
+    const titleByTask = new Map<string, string>();
     const searchTerms = [e.title, ...(e.aliases || [])].filter((t) => t.length >= 2);
     if (searchTerms.length === 0) continue;
 
@@ -457,6 +458,7 @@ function computeOccurrences(entities: KnowledgeEntity[], context: BookTextContex
           let count = 0;
           while (idx !== -1 && count < 10) {
             occurrences.push({ taskId: mappedId, pn: `pn-${count + 1}`, offset: idx, length: term.length });
+            titleByTask.set(mappedId, task.title);
             idx = taskText.indexOf(term, idx + term.length);
             count++;
           }
@@ -468,9 +470,36 @@ function computeOccurrences(entities: KnowledgeEntity[], context: BookTextContex
       if (!e.count || e.count < occurrences.length) {
         e.count = occurrences.length;
       }
+      // 用文本验证过的、子章节粒度的 occurrences 重建 refs（覆盖 LLM 给出的
+      // 模块/章节粒度 refs），使前端阅读页的实体高亮 join
+      // （refs[].chapter === subSectionId，如 ch1-1）真正命中。
+      e.refs = deriveRefsFromOccurrences(e.occurrences, titleByTask);
     }
+    // 无 occurrences 时保留 LLM 原 refs 作为兜底
   }
   return entities;
+}
+
+/**
+ * 从文本验证过的 occurrences 派生 refs：每个子章节 taskId 一条，
+ * 取该任务内首个 pn。前端阅读页/知识地图都以 refs[].chapter 作为章节 join key。
+ */
+export function deriveRefsFromOccurrences(
+  occurrences: EntityOccurrence[] | undefined,
+  titleByTask?: Map<string, string>,
+): EntityRef[] {
+  if (!occurrences || occurrences.length === 0) return [];
+  const refByTask = new Map<string, EntityRef>();
+  for (const occ of occurrences) {
+    if (!refByTask.has(occ.taskId)) {
+      refByTask.set(occ.taskId, {
+        chapter: occ.taskId,
+        title: titleByTask?.get(occ.taskId) || occ.taskId,
+        pn: occ.pn,
+      });
+    }
+  }
+  return [...refByTask.values()];
 }
 
 async function main() {

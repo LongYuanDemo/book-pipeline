@@ -18,6 +18,8 @@
 
 import { existsSync } from 'fs';
 import { writeFile } from 'fs/promises';
+import { resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { ensureFileDir, getBookDataPath } from '../../shared/paths.ts';
 import { validateTsFile } from '../../shared/validator.ts';
 import { SkillResult } from '../../shared/types.ts';
@@ -53,6 +55,7 @@ import type {
 } from './types.ts';
 
 import type { KnowledgeEntity, KnowledgeRelation } from './extract-entities.ts';
+import { deriveRefsFromOccurrences } from './extract-entities.ts';
 
 /* ------------------------------------------------------------------ */
 // CLI args
@@ -315,7 +318,7 @@ function generateAdaptationFlowLayout(
     nodes,
     edges,
     adaptationFlow: { works, relations, cultureLanes, lines: lines.length > 0 ? lines : undefined },
-    enrichedEntities: reviewEntities ? reviewEntities.map(mapEntityToEnriched) : works.map((w) => ({
+    enrichedEntities: reviewEntities ? reviewEntities.map((e) => mapEntityToEnriched(e)) : works.map((w) => ({
       id: w.id, title: w.title, type: w.medium === '人物' ? 'person' : 'work', summary: w.summary, culture: w.culture, medium: w.medium,
     })),
     enrichedRelations: (reviewRelations || relations).map(mapRelationToEnriched),
@@ -410,12 +413,27 @@ function generateProcessFlowLayout(chapters: Chapter[], bookTitle: string): Canv
 /* ------------------------------------------------------------------ */
 // Entity → EnrichedEntity mapping
 
-function mapEntityToEnriched(e: KnowledgeEntity): EnrichedEntity {
+function mapEntityToEnriched(e: KnowledgeEntity, titleById?: Map<string, string>): EnrichedEntity {
+  // 优先用文本验证过的 occurrences 派生子章节粒度 refs，使前端阅读页高亮 join 生效；
+  // 无 occurrences 时回退到 LLM 原 refs。
+  const derived = deriveRefsFromOccurrences(e.occurrences, titleById);
   return {
     id: e.id, title: e.title, type: e.type, gloss: e.gloss, desc: e.desc,
-    summary: e.summary, count: e.count, refs: e.refs, culture: e.culture,
+    summary: e.summary, count: e.count,
+    refs: derived.length > 0 ? derived : e.refs,
+    culture: e.culture,
     medium: e.medium, aliases: e.aliases, occurrences: e.occurrences,
   };
+}
+
+/** 从 bookInfo 构建 subSectionId → 标题 映射，供 refs 标题回填 */
+function buildTitleById(bookInfo: BookDataShape): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const ch of bookInfo.chapters) {
+    map.set(ch.id, ch.title);
+    for (const sub of ch.subSections) map.set(sub.id, sub.title);
+  }
+  return map;
 }
 
 function mapRelationToEnriched(r: KnowledgeRelation): EnrichedRelation {
@@ -539,7 +557,7 @@ function qualityToString(q: NonNullable<CanvasData['quality']>): string {
   }`;
 }
 
-function generateKnowledgeMapTs(data: CanvasData, _bookTitle: string): string {
+export function generateKnowledgeMapTs(data: CanvasData, _bookTitle: string): string {
   return `export type Paradigm =
   | 'radial'
   | 'tree'
@@ -779,6 +797,7 @@ async function main(): Promise<SkillResult<void>> {
   // Step 6: Layout + serialize
   console.log('[step-6] 布局生成...');
   let canvasData: CanvasData;
+  const titleById = buildTitleById(bookInfo);
 
   if (paradigm === 'adaptation-flow') {
     let flow: { works: AdaptationWork[]; relations: AdaptationRelation[]; cultureLanes: string[] } | null = null;
@@ -804,13 +823,13 @@ async function main(): Promise<SkillResult<void>> {
     canvasData = generateProcessFlowLayout(bookInfo.chapters, bookInfo.title);
     canvasData.rationale = rationale;
     if (reviewEntities.length > 0) {
-      canvasData.enrichedEntities = reviewEntities.map(mapEntityToEnriched);
+      canvasData.enrichedEntities = reviewEntities.map((e) => mapEntityToEnriched(e, titleById));
       canvasData.enrichedRelations = reviewRelations.map(mapRelationToEnriched);
     }
   } else {
     canvasData = generateRadialLayout(bookInfo.chapters, bookInfo.title);
     if (reviewEntities.length > 0) {
-      canvasData.enrichedEntities = reviewEntities.map(mapEntityToEnriched);
+      canvasData.enrichedEntities = reviewEntities.map((e) => mapEntityToEnriched(e, titleById));
       canvasData.enrichedRelations = reviewRelations.map(mapRelationToEnriched);
     }
   }
@@ -855,7 +874,7 @@ async function main(): Promise<SkillResult<void>> {
         reviewEntities = reviewResult.entities;
         reviewRelations = reviewResult.relations;
         if (paradigm !== 'adaptation-flow') {
-          canvasData.enrichedEntities = reviewEntities.map(mapEntityToEnriched);
+          canvasData.enrichedEntities = reviewEntities.map((e) => mapEntityToEnriched(e, titleById));
           canvasData.enrichedRelations = reviewRelations.map(mapRelationToEnriched);
         }
         canvasData.quality = await evaluateQuality(bookId);
@@ -898,6 +917,10 @@ async function main(): Promise<SkillResult<void>> {
   return { success: true, errors: [] };
 }
 
-main().then((result) => {
-  if (!result.success) process.exit(1);
-});
+// 仅作为脚本直接执行时运行 main；被 import（如复用 serializer）时不触发。
+const __isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (__isMain) {
+  main().then((result) => {
+    if (!result.success) process.exit(1);
+  });
+}
