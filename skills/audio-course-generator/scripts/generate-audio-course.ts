@@ -350,15 +350,39 @@ async function extractFramePlan(
 
   const prompt = `你是一位教学可视化专家。请从以下音频讲稿中提取 Topic 分段和知识点，用于生成渐进式 Mermaid 流程图。
 
+## 课程信息
 模块：${chapter.title}
 包含任务：${tasks.join('、')}
 
-讲稿内容：
+## 讲稿内容
 ${scriptPreview}
 
-请分析讲稿内容，识别话题转换点（Topic 边界），并在每个 Topic 内提取核心知识点。
+## 设计规范（必须严格遵守）
 
-输出以下 JSON（不要 markdown 代码块）：
+### Topic 分组
+1. 同一 Topic 内：围绕一个主题持续展开，在一张图上逐步添加节点（渐进式）
+2. Topic 切换时：识别到稿子切换了话题，才换一张新图
+3. 高信噪比：只放核心概念和关键关系，不把所有细节都堆到图上
+4. Topic 边界在话题转换处（如"接下来""我们来看""总结"等过渡语）
+5. 最后一个 Topic 应为总结/回顾
+
+### layout 选择（极其重要）
+- "TD"（自上而下）：适合概念展开、分类详解、知识体系
+- "LR"（从左到右）：适合操作流程、步骤顺序、时间线、急救流程
+- 根据讲稿内容选择最合适的布局，不要全部用 TD
+- 例如：讲解"急救流程"应该用 LR，讲解"疾病分类"应该用 TD
+
+### 知识点提取
+1. **知识点文本必须是核心概念或术语，4-12字**
+   - ✅ 正确："急危重症定义"、"EMSS体系"、"院前急救原则"、"深静脉血栓预防"、"急救医疗调度"
+   - ❌ 错误："大家注意"、"顾名思义"、"这一点是很多初学者容易忽略的"、"现在我们讲最后一个任务"
+   - 不能是讲稿原文片段、口语过渡语、语气词、叙述性文字
+   - 应该是教材中的专业术语、概念名称、操作步骤名称
+2. 每个知识点对应一帧，读到什么出什么
+3. relation 描述该知识点与父节点的关系："包含""展开""分类""举例""对比""步骤""定义""功能""注意"等
+4. 每个 Topic 至少 2 个知识点，整个讲稿至少 3 个 Topic
+
+## 输出格式（直接输出 JSON，不要 markdown 代码块）
 {
   "topics": [
     {
@@ -366,16 +390,18 @@ ${scriptPreview}
       "startPercent": 0.0,
       "layout": "TD",
       "knowledgePoints": [
-        { "text": "知识点1（4-12字核心概念）", "startPercent": 0.02, "relation": "包含" },
+        { "text": "知识点1", "startPercent": 0.02, "relation": "包含" },
         { "text": "知识点2", "startPercent": 0.08, "relation": "展开" }
       ]
     },
     {
-      "title": "第二个 Topic",
+      "title": "急救响应流程",
       "startPercent": 0.25,
       "layout": "LR",
       "knowledgePoints": [
-        { "text": "知识点", "startPercent": 0.26, "relation": "步骤" }
+        { "text": "现场评估", "startPercent": 0.26, "relation": "步骤" },
+        { "text": "紧急呼救", "startPercent": 0.32, "relation": "步骤" },
+        { "text": "初步处置", "startPercent": 0.38, "relation": "步骤" }
       ]
     }
   ],
@@ -384,18 +410,7 @@ ${scriptPreview}
 
 要求：
 1. startPercent 是该 Topic/知识点在讲稿中的位置百分比（0-1），用于计算出现时间
-2. 每个 Topic 至少 2 个知识点，整个讲稿至少 3 个 Topic
-3. **知识点文本必须是核心概念或术语，4-12字**。这是最重要的要求！
-   - ✅ 正确示例："急危重症定义"、"EMSS体系"、"院前急救原则"、"深静脉血栓预防"、"急救医疗调度"
-   - ❌ 错误示例："大家注意"、"顾名思义"、"这一点是很多初学者容易忽略的"、"现在我们讲最后一个任务"
-   - 知识点不能是讲稿原文片段、口语过渡语、语气词、叙述性文字
-   - 知识点应该是教材中的专业术语、概念名称、操作步骤名称
-4. relation 描述该知识点与父节点的关系（如"包含""展开""分类""举例""对比""步骤""定义"等）
-5. Topic 边界在话题转换处（如"接下来""我们来看""总结"等过渡语）
-6. 最后一个 Topic 应为总结/回顾
-7. layout: "TD"（自上而下，适合概念展开）或 "LR"（从左到右，适合流程步骤）
-8. summaryPoints: 从全讲稿中提取 3-5 个最核心的知识点，用于总结帧
-9. 直接输出 JSON，不要任何其他文字`;
+2. 直接输出 JSON，不要任何其他文字`;
 
   const result = await callCoze([{ role: 'user', content: prompt }]);
   if (!result) return null;
@@ -532,11 +547,12 @@ async function generateAlignedFrames(
           ? visiblePoints.map((_, i) => ` class N${i + nodeOffset} new`).join('\n')
           : ` class N${kpIdx} new`;
 
+        const layout = topic.layout === 'LR' ? 'LR' : 'TD';
         frames.push({
           start: kpStart,
           element: {
             diagram: {
-              content: m(`flowchart TD\n ${topicNodeId}["${topic.title}"]\n${edges}\n\n class ${topicNodeId} new\n${classLines}`),
+              content: m(`flowchart ${layout}\n ${topicNodeId}["${topic.title}"]\n${edges}\n\n class ${topicNodeId} new\n${classLines}`),
             },
           },
         });

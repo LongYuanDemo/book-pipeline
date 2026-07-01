@@ -60,6 +60,12 @@ export default function AudioCoursePlayer({ lessonId, onBack }: Props) {
     const audio = audioRef.current;
     if (!audio) return;
     const t = audio.currentTime;
+    // Guard: if we just seeked to a non-zero position but audio.currentTime is 0,
+    // the seek likely failed. Skip this update to prevent slider jumping to start.
+    if (seekTargetRef.current !== null && t < 0.5 && seekTargetRef.current > 1) {
+      return;
+    }
+    seekTargetRef.current = null;
     setCurrentTime(t);
     setSliderValue(t);
     const diagram = findCurrentDiagram(frames, t);
@@ -78,10 +84,13 @@ export default function AudioCoursePlayer({ lessonId, onBack }: Props) {
     }
   }, []);
 
+  const seekTargetRef = useRef<number | null>(null);
+
   const seek = useCallback((time: number) => {
     const audio = audioRef.current;
     if (!audio) return;
     seekPendingRef.current = true;
+    seekTargetRef.current = time;
     setSliderValue(time);
     setCurrentTime(time);
     const diagram = findCurrentDiagram(frames, time);
@@ -90,16 +99,16 @@ export default function AudioCoursePlayer({ lessonId, onBack }: Props) {
       audio.currentTime = time;
     } catch {
       seekPendingRef.current = false;
+      seekTargetRef.current = null;
     }
   }, [frames]);
 
   const handleSeeked = useCallback(() => {
     seekPendingRef.current = false;
     isDraggingRef.current = false;
-    const audio = audioRef.current;
-    if (!audio) return;
-    setCurrentTime(audio.currentTime);
-    setSliderValue(audio.currentTime);
+    // Don't reset slider/time here — let handleTimeUpdate handle it naturally.
+    // If the seek failed (audio.currentTime still 0), this prevents the slider
+    // from jumping back to the start.
   }, []);
 
   const handleFrameClick = useCallback(() => {
