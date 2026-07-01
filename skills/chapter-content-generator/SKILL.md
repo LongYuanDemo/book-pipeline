@@ -172,6 +172,36 @@ npx tsx skills/chapter-content-generator/scripts/generate-chapter-content.ts \
 
 如未提供 `--prompt-file`，脚本使用通用 fallback prompt（适用于大多数教材）。
 
+## 质量门（AI 增强内容质量，非仅存在性）
+
+`enhancement-gate.ts` 把知识图谱阶段确立的"阻塞式质量门"范式复用到 AI 增强：`aiEnhancement.ts` 必须达标才算合格交付物。治理"通用元提示稀释""缺少易错点/安全提示"等内容质量问题。
+
+**门槛指标**（默认阈值见 `enhancement-gate.ts` 的 `DEFAULT_ENHANCEMENT_THRESHOLDS`）：
+
+| 指标 | 默认门槛 | 含义 |
+|------|----------|------|
+| warning 数 | ≥ 1 | 全书至少 1 个易错点/安全风险 callout |
+| 含 warning 任务占比 | ≥ 0.3 | 安全相关学科强制项 |
+| 通用标题占比 | ≤ 0.4 | 正文 callout 用"AI 学习提示"等套话的比例 |
+| 标题去重率 | ≥ 0.3 | 正文 callout 标题的独立度（防千篇一律） |
+| 含 quiz 任务占比 | ≥ 0.8 | 随堂测验覆盖 |
+| 占位/降级 callout | = 0 | "本节内容待AI增强"等降级内容 |
+
+**命令行用法**：
+
+```bash
+# 独立评估（不阻塞）
+npx tsx skills/chapter-content-generator/scripts/enhancement-gate.ts --book-id <bookId>
+
+# 阻塞模式：门未过退出码 1
+npx tsx skills/chapter-content-generator/scripts/enhancement-gate.ts --book-id <bookId> --gate
+
+# 生成时启用阻塞门（门未过则整步失败）
+npx tsx skills/chapter-content-generator/scripts/generate-ai-enhancement.ts --book-id <bookId> --strict
+```
+
+**根因治理（prompt）**：生成 prompt 已移除"AI 学习提示"这类会被逐字复制的示例标题，改为要求"用概括该段要点的具体标题、同一任务内不重复"，并将"每任务至少 1 个 warning"设为硬性要求。质量门是兜底强制，prompt 是源头改善，两者配合。
+
 ## 交互设计参考
 
 - **Kimi V4**：简洁的阅读界面，内容居中，舒适的行距

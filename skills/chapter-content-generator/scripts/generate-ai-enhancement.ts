@@ -19,6 +19,7 @@ import {
 } from '../../shared/paths.ts';
 import { validateTsFile } from '../../shared/validator.ts';
 import { callCoze } from '../../shared/coze.ts';
+import { evaluateEnhancementFile } from './enhancement-gate.ts';
 
 /* ------------------------------------------------------------------ */
 // 类型定义
@@ -63,10 +64,11 @@ export interface TaskEnhancement {
 /* ------------------------------------------------------------------ */
 // 参数解析
 
-function parseArgs(): { bookId: string; chapterFilter: string | null } {
+function parseArgs(): { bookId: string; chapterFilter: string | null; strict: boolean } {
   const args = process.argv.slice(2);
   let bookId = '';
   let chapterFilter: string | null = null;
+  let strict = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--book-id' && args[i + 1]) {
@@ -75,6 +77,8 @@ function parseArgs(): { bookId: string; chapterFilter: string | null } {
     } else if (args[i] === '--chapter' && args[i + 1]) {
       chapterFilter = args[i + 1];
       i++;
+    } else if (args[i] === '--strict') {
+      strict = true;
     }
   }
 
@@ -83,7 +87,7 @@ function parseArgs(): { bookId: string; chapterFilter: string | null } {
     process.exit(1);
   }
 
-  return { bookId, chapterFilter };
+  return { bookId, chapterFilter, strict };
 }
 
 /* ------------------------------------------------------------------ */
@@ -234,7 +238,7 @@ ${headingList}
       "headingHint": "子标题文本片段",
       "callout": {
         "variant": "info",
-        "title": "AI 学习提示",
+        "title": "<用一个概括该段要点的具体标题，禁止统一写'AI 学习提示'>",
         "body": "针对该子标题内容的2-3句学习建议"
       },
       "quiz": {
@@ -270,10 +274,12 @@ ${headingList}
 1. sections数组：为每个重要子标题生成一个增强项，至少2个，最多5个
 2. headingHint必须是原文中实际出现的标题文本片段
 3. callout和quiz都必须基于原文实际内容，不能编造
-4. callout的variant必须根据内容选择：知识概念用"info"，操作要点用"tip"，背景文化用"culture"，注意事项/易错点/安全风险用"warning"。至少包含1个"warning"类型的callout
-5. quiz的4个选项要有区分度
-6. answer是正确选项的索引（0-3）
-7. 直接输出JSON，不要任何其他文字`;
+4. callout的variant必须根据内容选择：知识概念用"info"，操作要点用"tip"，背景文化用"culture"，注意事项/易错点/安全风险用"warning"
+5. 【硬性要求】本任务必须至少包含 1 个 "warning" 类型 callout，标注该内容的易错点/安全风险/常见误解——这是安全相关学科的强制项，不得省略
+6. 【硬性要求】每个 callout 的 title 必须是能概括该段具体内容的短语（如"院前急救的黄金时间""气道梗阻的识别"），禁止所有 callout 统一使用"AI 学习提示""知识拓展"等通用套话；同一任务内标题不得重复
+7. quiz的4个选项要有区分度
+8. answer是正确选项的索引（0-3）
+9. 直接输出JSON，不要任何其他文字`;
 
   const result = await callCoze([{ role: 'user', content: prompt }]);
   if (!result) {
@@ -434,7 +440,7 @@ ${enh.sections
 // 主流程
 
 async function main(): Promise<void> {
-  const { bookId, chapterFilter } = parseArgs();
+  const { bookId, chapterFilter, strict } = parseArgs();
 
   console.log(`[ai-enhancement] bookId=${bookId}${chapterFilter ? `, chapter=${chapterFilter}` : ''}`);
 
@@ -579,6 +585,24 @@ async function main(): Promise<void> {
   } else {
     console.error('[ai-enhancement] 校验失败:');
     validation.messages.forEach((m) => console.error(`  - ${m}`));
+  }
+
+  // 9. 质量门（内容质量，非仅存在性）
+  console.log('[ai-enhancement] 质量门评估...');
+  try {
+    const report = await evaluateEnhancementFile(bookId);
+    console.log(`[gate] 变体分布 info ${report.variantDistribution.info} / tip ${report.variantDistribution.tip} / culture ${report.variantDistribution.culture} / warning ${report.variantDistribution.warning}`);
+    console.log(`[gate] 标题去重率 ${report.distinctTitleRatio}, 通用标题占比 ${report.genericTitleRatio}, warning 任务占比 ${report.warningTaskRatio}`);
+    console.log(`[gate] ${report.gatePassed ? '✅ 通过' : '❌ 未通过'}`);
+    if (!report.gatePassed) {
+      for (const f of report.gateFailures) console.log(`  ✗ ${f}`);
+      if (strict) {
+        console.error('[gate] AI 增强质量门未通过（--strict），退出码 1');
+        process.exit(1);
+      }
+    }
+  } catch (err) {
+    console.warn('[gate] 质量门评估失败:', err);
   }
 }
 
