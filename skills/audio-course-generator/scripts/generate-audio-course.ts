@@ -18,7 +18,7 @@
  */
 
 import { existsSync } from 'fs';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { join as pathJoin } from 'path';
 
 // 确保 ~/bin 在 PATH 中（ffmpeg/ffprobe 安装位置）
@@ -41,11 +41,12 @@ import type { SourceParsed } from '../../source-parser/scripts/parse-source.ts';
 /* ------------------------------------------------------------------ */
 // 命令行参数解析
 
-function parseArgs(): { bookId: string; promptFile?: string; concurrency: number } {
+function parseArgs(): { bookId: string; promptFile?: string; concurrency: number; framesOnly: boolean } {
   const args = process.argv.slice(2);
   let bookId = '';
   let promptFile: string | undefined;
   let concurrency = 2; // 默认 2（ASR 是 CPU/内存密集型，不能高并发）
+  let framesOnly = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--book-id' && args[i + 1]) {
@@ -57,16 +58,18 @@ function parseArgs(): { bookId: string; promptFile?: string; concurrency: number
     } else if (args[i] === '--concurrency' && args[i + 1]) {
       concurrency = parseInt(args[i + 1], 10) || 2;
       i++;
+    } else if (args[i] === '--frames-only') {
+      framesOnly = true;
     }
   }
 
   if (!bookId) {
     console.error('错误: 必须提供 --book-id 参数');
-    console.error('用法: npx tsx generate-audio-course.ts --book-id <bookId> [--prompt-file <path>] [--concurrency 2]');
+    console.error('用法: npx tsx generate-audio-course.ts --book-id <bookId> [--prompt-file <path>] [--concurrency 2] [--frames-only]');
     process.exit(1);
   }
 
-  return { bookId, promptFile, concurrency };
+  return { bookId, promptFile, concurrency, framesOnly };
 }
 
 /* ------------------------------------------------------------------ */
@@ -853,33 +856,58 @@ async function generateLesson(
   bookId: string,
   sourceParsed: SourceParsed | null,
   promptFile?: string,
+  framesOnly: boolean = false,
 ): Promise<VisualSequenceLesson> {
   const lessonId = `audio-l${index + 1}`;
 
-  console.log(`[audio-course-generator] 处理模块 ${index + 1}: ${chapter.title}`);
+  console.log(`[audio-course-generator] 处理模块 ${index + 1}: ${chapter.title}${framesOnly ? ' [frames-only]' : ''}`);
 
-  // 1. 查找原文内容
-  const taskRawContent = findTaskRawContent(sourceParsed, chapter.title, chapter.subSections[0]?.title || '');
-
-  // 2. 生成音频稿
-  const script = await generateScript(chapter, taskRawContent, promptFile);
-
-  // 2.5 保存朗读稿到 audio-scripts/ 目录（供人审稿）
-  const scriptDir = pathJoin(PROJECT_ROOT, 'books', bookId, 'audio-scripts');
-  await mkdir(scriptDir, { recursive: true });
-  const scriptPath = pathJoin(scriptDir, `${lessonId}-${chapter.title.replace(/[/\\?%*:|"<>]/g, '_')}.txt`);
-  await writeFile(scriptPath, script, 'utf-8');
-  console.log(`[audio-course-generator] 朗读稿已保存: ${scriptPath}`);
-
-  // 3. 生成音频文件
+  // 音频文件路径
   const audioFileName = `${lessonId}.mp3`;
   const audioAbsPath = `${getBookAssetsPath(bookId)}/audio/${audioFileName}`;
   const audioRelPath = `/audio/${audioFileName}`;
 
-  ensureFileDir(audioAbsPath);
-  await generateLocalTts(script, audioAbsPath);
+  let script: string;
+
+  if (framesOnly) {
+    // --frames-only 模式：复用已有音频 + 朗读稿，只重跑 ASR + 帧生成
+    const scriptDir = pathJoin(PROJECT_ROOT, 'books', bookId, 'audio-scripts');
+    const scriptFiles = await readdir(scriptDir).catch(() => []);
+    const scriptFile = scriptFiles.find(f => f.startsWith(`${lessonId}-`));
+    if (scriptFile) {
+      script = await readFile(pathJoin(scriptDir, scriptFile), 'utf-8');
+      console.log(`[audio-course-generator] 复用朗读稿: ${scriptFile} (${script.length} 字)`);
+    } else {
+      console.log(`[audio-course-generator] 朗读稿不存在，从音频 ASR 结果反推`);
+      script = '';
+    }
+
+    if (!existsSync(audioAbsPath)) {
+      console.error(`[audio-course-generator] 音频文件不存在: ${audioAbsPath}，跳过`);
+      throw new Error(`音频不存在: ${audioAbsPath}`);
+    }
+  } else {
+    // 完整流程：生成稿 → TTS → ASR → 帧
+    // 1. 查找原文内容
+    const taskRawContent = findTaskRawContent(sourceParsed, chapter.title, chapter.subSections[0]?.title || '');
+
+    // 2. 生成音频稿
+    script = await generateScript(chapter, taskRawContent, promptFile);
+
+    // 2.5 保存朗读稿到 audio-scripts/ 目录（供人审稿）
+    const scriptDir = pathJoin(PROJECT_ROOT, 'books', bookId, 'audio-scripts');
+    await mkdir(scriptDir, { recursive: true });
+    const scriptPath = pathJoin(scriptDir, `${lessonId}-${chapter.title.replace(/[/\\?%*:|"<>]/g, '_')}.txt`);
+    await writeFile(scriptPath, script, 'utf-8');
+    console.log(`[audio-course-generator] 朗读稿已保存: ${scriptPath}`);
+
+    // 3. 生成音频文件
+    ensureFileDir(audioAbsPath);
+    await generateLocalTts(script, audioAbsPath);
+  }
+
   const actualDuration = await getAudioDuration(audioAbsPath);
-  console.log(`[audio-course-generator] 音频已生成: ${audioAbsPath} (${actualDuration}s)`);
+  console.log(`[audio-course-generator] 音频: ${audioAbsPath} (${actualDuration}s)`);
 
   // 4. ASR 对齐获取真实时间戳（降级到估算）
   let timestamps: SentenceTimestamp[];
@@ -1014,15 +1042,16 @@ const generateLessonTask = task(
     bookId: string;
     sourceParsed: SourceParsed | null;
     promptFile?: string;
+    framesOnly?: boolean;
   }): Promise<VisualSequenceLesson> => {
-    return generateLesson(params.chapter, params.index, params.bookId, params.sourceParsed, params.promptFile);
+    return generateLesson(params.chapter, params.index, params.bookId, params.sourceParsed, params.promptFile, params.framesOnly);
   },
 );
 
 const audioCourseWorkflow = entrypoint(
   { name: 'audioCourseWorkflow' },
-  async (params: { bookId: string; concurrency: number; promptFile?: string }) => {
-    console.log(`[audio-course-generator] bookId=${params.bookId}, concurrency=${params.concurrency}`);
+  async (params: { bookId: string; concurrency: number; promptFile?: string; framesOnly?: boolean }) => {
+    console.log(`[audio-course-generator] bookId=${params.bookId}, concurrency=${params.concurrency}, framesOnly=${params.framesOnly || false}`);
 
     // 1. 加载 bookInfo
     const bookInfo = await loadBookInfo(params.bookId);
@@ -1036,10 +1065,10 @@ const audioCourseWorkflow = entrypoint(
     }
 
     // 3. LangGraph fan-out：并发生成所有章节音频
-    console.log(`[audio-course-generator] 开始并发生成音频课程...`);
+    console.log(`[audio-course-generator] 开始${params.framesOnly ? '重新生成帧' : '并发生成音频课程'}...`);
     const rawResults = await runWithConcurrency(
       bookInfo.chapters,
-      (chapter, index) => generateLessonTask({ chapter, index, bookId: params.bookId, sourceParsed, promptFile: params.promptFile }),
+      (chapter, index) => generateLessonTask({ chapter, index, bookId: params.bookId, sourceParsed, promptFile: params.promptFile, framesOnly: params.framesOnly }),
       params.concurrency,
     );
     const lessons = await Promise.all(rawResults);
@@ -1072,9 +1101,9 @@ const audioCourseWorkflow = entrypoint(
 // 主流程
 
 async function main(): Promise<void> {
-  const { bookId, promptFile, concurrency } = parseArgs();
+  const { bookId, promptFile, concurrency, framesOnly } = parseArgs();
 
-  const result = await audioCourseWorkflow.invoke({ bookId, concurrency, promptFile });
+  const result = await audioCourseWorkflow.invoke({ bookId, concurrency, promptFile, framesOnly });
 
   if (!result.success) {
     process.exit(1);
