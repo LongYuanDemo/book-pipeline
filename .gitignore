@@ -1,3 +1,5 @@
 node_modules/
 package-lock.json
-books/*/logs/
+
+# 书籍数据不入库（由加工时在本地/CI 生成）
+books/
