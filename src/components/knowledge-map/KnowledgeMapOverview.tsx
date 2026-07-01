@@ -69,15 +69,27 @@ function getTypeColor(type: string): string {
   return TYPE_COLORS[type] || '#6b7280';
 }
 
+// 关系样式表 —— 与 skills/knowledge-map-generator/scripts/relation-vocab.ts 词表对齐。
+// 通用/结构类关系用于医学、工程等理科教材；文学类关系用于 adaptation-flow。
+// 新增关系类型时两处同步登记，避免落到灰色默认样式。
 const RELATION_STYLES: Record<string, { color: string; label: string }> = {
+  // 文学/翻译类
   adaptation: { color: '#6b46c1', label: '改编' },
   translation: { color: '#2c5282', label: '翻译' },
-  influence: { color: '#B8860B', label: '影响' },
   remake: { color: '#8B0000', label: '重拍' },
+  // 通用/结构类
+  influence: { color: '#B8860B', label: '影响' },
   citation: { color: '#666', label: '引用' },
   composition: { color: '#2E8B57', label: '构成' },
+  'part-of': { color: '#0f766e', label: '组成' },
   derivation: { color: '#8B4513', label: '衍生' },
   extension: { color: '#4a90d9', label: '延伸' },
+  prerequisite: { color: '#dc2626', label: '前置' },
+  progressive: { color: '#ea580c', label: '递进' },
+  parallel: { color: '#0891b2', label: '并列' },
+  application: { color: '#7c3aed', label: '应用' },
+  causal: { color: '#b91c1c', label: '因果' },
+  contrast: { color: '#a16207', label: '对比' },
 };
 
 const PAPER_BG = '#faf6f0';

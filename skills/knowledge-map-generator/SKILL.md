@@ -98,6 +98,39 @@ See [references/ENTITY-TYPES.md](references/ENTITY-TYPES.md) for full type catal
 5. Run `generate-knowledge-map.ts` with `--entity-prompt-file` and `--relation-prompt-file`
 6. Verify output quality (entity count, relation count, refs completeness, no duplicate IDs)
 
+## Quality Gate（阻塞式质量门 + 反思重跑）
+
+`evaluate-quality.ts` 不再只是打分，而是一道**可阻塞的质量门**——每本书的知识图谱必须达标才算合格交付物（面向 2000+ 本批量制作）。
+
+**门槛指标**（默认阈值见 `types.ts` 的 `DEFAULT_QUALITY_THRESHOLDS`）：
+
+| 指标 | 默认门槛 | 含义 |
+|------|----------|------|
+| 关系密度 | ≥ 0.3 | 关系数 / 非中心实体数（防"实体一堆、关系稀疏"的散点图） |
+| reason 覆盖率 | ≥ 0.5 | 带 `reason` 的关系占比（防空关系） |
+| 引用覆盖率 | ≥ 0.6 | 有 `refs` 的实体占比 |
+| 孤立节点占比 | ≤ 0.1 | 未连边实体占比 |
+| 重复实体 ID | = 0 | 去重是否彻底 |
+| 未知关系类型 | 无 | 关系类型须在 `relation-vocab.ts` 词表内 |
+| 跨书污染 | 无 | 中心节点文案须由本书书名生成（详见去污染） |
+
+**命令行用法**：
+
+```bash
+# 只评估 + 打印门结果（不阻塞）
+npx tsx skills/knowledge-map-generator/scripts/evaluate-quality.ts --book-id <bookId>
+
+# 阻塞模式：门未通过则退出码 1（供 orchestrator / CI 拦截）
+npx tsx skills/knowledge-map-generator/scripts/evaluate-quality.ts --book-id <bookId> --gate
+
+# 生成时启用阻塞门 + 有界反思重跑（门未过则重跑关系构建+审查，最多 N 次）
+npx tsx skills/knowledge-map-generator/scripts/generate-knowledge-map.ts --book-id <bookId> --strict --reflect 2
+```
+
+**去污染（review 阶段，幂等）**：`review-knowledge-map.ts` 每次都按本书 `bookInfo.ts` 的书名重建 `center-work` 中心节点，覆盖任何上游（如 `extract-workflow.ts` 的文学模板）泄漏的跨书文案。
+
+**关系类型词表**：`relation-vocab.ts` 是关系类型的单一真相源；前端 `KnowledgeMapOverview` 的 `RELATION_STYLES` 按此镜像样式，确保医学/工程类关系（prerequisite/progressive/application/causal 等）也有颜色+标签，不落灰色默认。新增类型时两处同步登记。
+
 ## Output Data Structure
 
 ```typescript

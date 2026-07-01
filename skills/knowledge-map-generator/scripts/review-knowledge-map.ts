@@ -17,6 +17,8 @@ import { fileURLToPath } from 'url';
 import { resolve } from 'path';
 import { getBookDataPath, ensureFileDir } from '../../shared/paths.ts';
 import { callLLM } from '../../shared/llm.ts';
+import { loadBookTitle } from './book-meta.ts';
+import { isCanonicalRelationType } from './relation-vocab.ts';
 import type { KnowledgeEntity } from './extract-entities.ts';
 import type { KnowledgeRelation } from './build-relations.ts';
 
@@ -90,6 +92,7 @@ function findEmptyRefs(entities: KnowledgeEntity[]): string[] {
 function autoFix(
   entities: KnowledgeEntity[],
   relations: KnowledgeRelation[],
+  bookTitle: string,
 ): { entities: KnowledgeEntity[]; relations: KnowledgeRelation[]; fixes: string[] } {
   const fixes: string[] = [];
   const entityMap = new Map(entities.map((e) => [e.id, e]));
@@ -149,18 +152,36 @@ function autoFix(
     fixes.push(`去重：移除 ${relations.length - uniqueRels.length} 条重复关系`);
   }
 
-  // 确保中心主题存在（通用描述，不绑定特定书籍）
-  if (!entityMap.has(centerId)) {
-    entities.unshift({
-      id: centerId,
-      title: '教材主题',
-      culture: '核心概念',
-      medium: '教材主题',
-      type: 'concept',
-      summary: '教材知识体系核心主题',
-      chapterRefs: [],
-    });
+  // 中心节点去污染：始终按本书书名重建，覆盖任何上游泄漏的跨书模板文案（幂等）
+  const canonicalCenter: KnowledgeEntity = {
+    id: centerId,
+    title: bookTitle,
+    culture: '核心概念',
+    medium: '教材主题',
+    type: 'concept',
+    summary: `《${bookTitle}》知识体系核心主题`,
+    chapterRefs: [],
+  };
+  const existingCenter = entities.find((e) => e.id === centerId);
+  if (!existingCenter) {
+    entities.unshift(canonicalCenter);
     fixes.push('添加缺失的中心主题节点');
+  } else {
+    const before = `${existingCenter.title}|${existingCenter.summary}|${existingCenter.culture}`;
+    existingCenter.title = canonicalCenter.title;
+    existingCenter.summary = canonicalCenter.summary;
+    existingCenter.culture = canonicalCenter.culture;
+    existingCenter.medium = canonicalCenter.medium;
+    existingCenter.type = 'concept';
+    if (before !== `${existingCenter.title}|${existingCenter.summary}|${existingCenter.culture}`) {
+      fixes.push(`去污染：按书名《${bookTitle}》重建中心节点文案`);
+    }
+  }
+
+  // 关系类型规整：词表外类型记录到 fixes（不删除关系，交给质量门判定是否阻塞）
+  const foreignTypes = [...new Set(uniqueRels.map((r) => r.type).filter((t) => t && !isCanonicalRelationType(t)))];
+  if (foreignTypes.length > 0) {
+    fixes.push(`发现词表外关系类型：${foreignTypes.join('、')}（请在 relation-vocab.ts 登记或修正 prompt）`);
   }
 
   return { entities, relations: uniqueRels, fixes };
@@ -246,6 +267,8 @@ export async function reviewKnowledgeMap(bookId: string): Promise<ReviewResult> 
   let entities = rawEntities.entities;
   let relations = rawRelations.relations;
 
+  const bookTitle = await loadBookTitle(bookId);
+
   const notes: string[] = [];
 
   notes.push(`实体数量：${entities.length}`);
@@ -266,7 +289,7 @@ export async function reviewKnowledgeMap(bookId: string): Promise<ReviewResult> 
   // 尝试 LLM 深度审查
   let llmSuggestions: any = null;
   try {
-    const prompt = buildLLMPrompt(bookId, entities, relations);
+    const prompt = buildLLMPrompt(bookTitle, entities, relations);
     const output = await callLLM(prompt, bookId);
     if (output) {
       const match = output.match(/\{[\s\S]*\}/);
@@ -280,7 +303,7 @@ export async function reviewKnowledgeMap(bookId: string): Promise<ReviewResult> 
   }
 
   // 自动修复
-  const { entities: fixedEntities, relations: fixedRelations, fixes } = autoFix(entities, relations);
+  const { entities: fixedEntities, relations: fixedRelations, fixes } = autoFix(entities, relations, bookTitle);
 
   return {
     entities: fixedEntities,

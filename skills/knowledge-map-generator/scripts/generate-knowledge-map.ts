@@ -57,27 +57,31 @@ import type { KnowledgeEntity, KnowledgeRelation } from './extract-entities.ts';
 /* ------------------------------------------------------------------ */
 // CLI args
 
-function parseArgs(): { bookId: string; force: boolean; entityPromptFile?: string; relationPromptFile?: string } {
+function parseArgs(): { bookId: string; force: boolean; strict: boolean; reflect: number; entityPromptFile?: string; relationPromptFile?: string } {
   const args = process.argv.slice(2);
   let bookId = '';
   let force = false;
+  let strict = false;
+  let reflect = 0;
   let entityPromptFile: string | undefined;
   let relationPromptFile: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--book-id' && args[i + 1]) { bookId = args[i + 1]; i++; }
     if (args[i] === '--force') force = true;
+    if (args[i] === '--strict') strict = true;
+    if (args[i] === '--reflect' && args[i + 1]) { reflect = Math.max(0, parseInt(args[i + 1], 10) || 0); i++; }
     if (args[i] === '--entity-prompt-file' && args[i + 1]) { entityPromptFile = args[i + 1]; i++; }
     if (args[i] === '--relation-prompt-file' && args[i + 1]) { relationPromptFile = args[i + 1]; i++; }
   }
 
   if (!bookId) {
     console.error('错误: 必须提供 --book-id 参数');
-    console.error('用法: npx tsx generate-knowledge-map.ts --book-id <bookId> [--force] [--entity-prompt-file <path>] [--relation-prompt-file <path>]');
+    console.error('用法: npx tsx generate-knowledge-map.ts --book-id <bookId> [--force] [--strict] [--reflect N] [--entity-prompt-file <path>] [--relation-prompt-file <path>]');
     process.exit(1);
   }
 
-  return { bookId, force, entityPromptFile, relationPromptFile };
+  return { bookId, force, strict, reflect, entityPromptFile, relationPromptFile };
 }
 
 /* ------------------------------------------------------------------ */
@@ -751,8 +755,8 @@ async function runPipeline(
 }
 
 async function main(): Promise<SkillResult<void>> {
-  const { bookId, force, entityPromptFile, relationPromptFile } = parseArgs();
-  console.log(`[orchestrator] bookId=${bookId}, force=${force}`);
+  const { bookId, force, strict, reflect, entityPromptFile, relationPromptFile } = parseArgs();
+  console.log(`[orchestrator] bookId=${bookId}, force=${force}, strict=${strict}, reflect=${reflect}`);
 
   // Step 1: Structure analysis
   console.log('[step-1] 结构分析...');
@@ -831,11 +835,43 @@ async function main(): Promise<SkillResult<void>> {
     // events are optional
   }
 
-  // Step 7: Quality evaluation
+  // Step 7: Quality evaluation + 阻塞式质量门 + 有界反思重跑
   console.log('[step-7] 质量评估...');
   try {
     canvasData.quality = await evaluateQuality(bookId);
-    console.log(`[step-7] 置信度: ${canvasData.quality.confidenceScore}, 覆盖度: ${canvasData.quality.coverage}`);
+    console.log(`[step-7] 置信度: ${canvasData.quality.confidenceScore}, 覆盖度: ${canvasData.quality.coverage}, 关系密度: ${canvasData.quality.relationDensity}`);
+
+    // 反思循环：门未通过且开启 --reflect 时，重跑关系构建+审查，最多 reflect 次
+    let attempt = 0;
+    while (canvasData.quality && !canvasData.quality.gatePassed && attempt < reflect) {
+      attempt++;
+      console.log(`[reflect] 质量门未通过，第 ${attempt}/${reflect} 次反思重跑（关系构建 + 审查）...`);
+      for (const f of canvasData.quality.gateFailures) console.log(`  ✗ ${f}`);
+      try {
+        const relationResult = await buildRelations(bookId, relationPromptFile);
+        await saveRelations(bookId, relationResult);
+        const reviewResult = await reviewKnowledgeMap(bookId);
+        await saveReviewed(bookId, reviewResult);
+        reviewEntities = reviewResult.entities;
+        reviewRelations = reviewResult.relations;
+        if (paradigm !== 'adaptation-flow') {
+          canvasData.enrichedEntities = reviewEntities.map(mapEntityToEnriched);
+          canvasData.enrichedRelations = reviewRelations.map(mapRelationToEnriched);
+        }
+        canvasData.quality = await evaluateQuality(bookId);
+      } catch (err) {
+        console.warn(`[reflect] 第 ${attempt} 次反思重跑失败:`, err);
+        break;
+      }
+    }
+
+    console.log(`[gate] ${canvasData.quality.gatePassed ? '✅ 通过' : '❌ 未通过'}`);
+    if (!canvasData.quality.gatePassed) {
+      for (const f of canvasData.quality.gateFailures) console.log(`  ✗ ${f}`);
+    }
+    if (strict && !canvasData.quality.gatePassed) {
+      return { success: false, errors: ['质量门未通过：', ...canvasData.quality.gateFailures] };
+    }
   } catch (err) {
     console.warn('[step-7] 质量评估失败:', err);
   }

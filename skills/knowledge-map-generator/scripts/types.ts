@@ -167,6 +167,24 @@ export interface EventRelation {
   label?: string;
 }
 
+export interface QualityThresholds {
+  minRelationDensity: number;   // 关系数 / 非中心实体数
+  minReasonRatio: number;       // 带 reason 的关系占比
+  minCoverage: number;          // 有 refs 的实体占比
+  maxIsolatedRatio: number;     // 孤立节点占比上限
+  minEntityCount: number;
+  minRelationCount: number;
+}
+
+export const DEFAULT_QUALITY_THRESHOLDS: QualityThresholds = {
+  minRelationDensity: 0.3,
+  minReasonRatio: 0.5,
+  minCoverage: 0.6,
+  maxIsolatedRatio: 0.1,
+  minEntityCount: 5,
+  minRelationCount: 3,
+};
+
 export interface QualityReport {
   entityCount: number;
   relationCount: number;
@@ -178,6 +196,14 @@ export interface QualityReport {
   emptyRefsEntities: number;
   avgRefsPerEntity: number;
   confidenceScore: number;
+  // ── 质量门指标 ──
+  relationDensity: number;         // 关系数 / 非中心实体数
+  reasonRatio: number;             // 带 reason 的关系占比
+  foreignRelationTypes: string[];  // 词表外的关系类型
+  contaminationIssues: string[];   // 跨书模板污染（中心节点等）
+  gatePassed: boolean;             // 是否通过阻塞式质量门
+  gateFailures: string[];          // 未通过的具体门槛
+  thresholds: QualityThresholds;   // 本次评估使用的门槛
   issues: string[];
   suggestions: string[];
 }
