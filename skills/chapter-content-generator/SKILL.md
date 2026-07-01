@@ -117,10 +117,17 @@ export const chapterContents: Record<string, TaskContent> = { ... };
 5. **输出 TS 文件**：写入 `books/{bookId}/data/chapterContent.ts`
 6. **前端验证**：点击章节目录中的任务，验证渲染效果
 
-## 前端集成
+## 前端集成（当前真实契约）
 
-- 页面：`src/pages/ChapterContent.tsx`
-- 数据：`books/{bookId}/data/chapterContent.ts`
+阅读页 `src/pages/ChapterContent.tsx` **不再渲染 `chapterContent.ts`**，而是：
+
+- **原文**：`sourceParsed.ts` 的 `rawHtml`（按 `task.id === subSectionId` 定位，需 book-info 已对齐 id）
+- **AI 增强浮层**：`aiEnhancement.ts`（按 `subSectionId` 取，`headingHint` 对齐正文标题）
+- **实体高亮**：`knowledgeMap.ts` 的 `enrichedEntities`（按 `refs[].chapter === subSectionId` 命中）
+
+> `chapterContent.ts`（本 Skill 的 ContentBlock 产物）现为**流水线中间产物**，被
+> anki-card-generator / knowledge-map-generator / video-keyframe-extractor 消费，不直接上前端阅读页。
+
 - 路由：App.tsx 中 `view === 'chapter-content'`
 - 入口：Home 页章节目录 → 点击任务 → 打开阅读页
 - 导航：ChapterList 的 subSection 按钮 → `onOpenTask(sub.id)`

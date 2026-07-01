@@ -127,6 +127,51 @@ async function loadSourceParsed(bookId: string): Promise<SourceParsed | null> {
   }
 }
 
+/**
+ * 将 sourceParsed.ts 的 module/task id 改写为 bookInfo 的 chapter/subSection id。
+ *
+ * 前端 ChapterContent.findRawHtml 用 `task.id === subSectionId`（如 ch1-1）定位原文，
+ * 但 source-parser 产出的是 module2-task1 之类的 id，两套命名不一致，导致该路径
+ * 命中 0，只能退回脆弱的 `module{ci+2}` 位置兜底（仅对"章节从 module2 起"的书成立）。
+ * 由 book-info（掌握 module→chapter 映射）统一改写，使 join 确定化、书籍无关。
+ * 幂等：已对齐的 id 不在映射内，重复运行无副作用。
+ */
+async function alignSourceParsedIds(
+  bookId: string,
+  chapters: Chapter[],
+  sourceParsed: SourceParsed | null,
+): Promise<void> {
+  if (!sourceParsed) return;
+
+  const idMap = new Map<string, string>();
+  for (const ch of chapters) {
+    if (!ch.sourceModuleId) continue;
+    const mod = sourceParsed.modules.find((m) => m.id === ch.sourceModuleId);
+    if (!mod) continue;
+    idMap.set(mod.id, ch.id);
+    for (let i = 0; i < mod.tasks.length && i < ch.subSections.length; i++) {
+      idMap.set(mod.tasks[i].id, ch.subSections[i].id);
+    }
+  }
+  if (idMap.size === 0) return;
+
+  const path = getBookDataPath(bookId, 'sourceParsed.ts');
+  let src = await readFile(path, 'utf-8');
+  let n = 0;
+  // 长 id 先替换；`id: '...'` 前缀 + 引号定界，精确匹配，不会误伤正文
+  for (const [from, to] of [...idMap.entries()].sort((a, b) => b[0].length - a[0].length)) {
+    const needle = `id: '${from}'`;
+    if (src.includes(needle)) {
+      src = src.split(needle).join(`id: '${to}'`);
+      n++;
+    }
+  }
+  if (n > 0) {
+    await writeFile(path, src, 'utf-8');
+    console.log(`[book-info-generator] 已对齐 sourceParsed.ts 的 ${n} 个 id → bookInfo 子章节 id（前端 findRawHtml 直接命中）`);
+  }
+}
+
 /** 将 sourceParsed.modules 转换为 generate-book-info 内部使用的模块格式 */
 function convertModules(spModules: Module[]): { moduleId: string; moduleTitle: string; tasks: string[] }[] {
   return spModules.map((mod) => ({
@@ -567,6 +612,10 @@ async function main(): Promise<SkillResult<void>> {
 
   let chapters = generateChapterIds(modules);
   chapters = await generateSummaries(chapters, bookId, promptFile);
+
+  // 对齐 sourceParsed.ts 的 id 到 bookInfo 子章节 id，使前端 ChapterContent 的
+  // findRawHtml(task.id === subSectionId) 直接命中，而非依赖脆弱的位置兜底映射。
+  await alignSourceParsedIds(bookId, chapters, sourceParsed);
 
   const bookInfo: BookInfo = {
     title: title || bookId,
