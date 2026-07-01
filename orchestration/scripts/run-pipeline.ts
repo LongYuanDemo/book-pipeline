@@ -19,7 +19,7 @@
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { execFileSync } from 'child_process';
-import { PROJECT_ROOT } from '../../shared/paths.ts';
+import { PROJECT_ROOT } from '../../skills/shared/paths.ts';
 
 /* ------------------------------------------------------------------ */
 // 命令行参数解析

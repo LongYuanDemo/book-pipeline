@@ -9,7 +9,7 @@
  */
 
 import { existsSync } from 'fs';
-import { getBookDataPath } from '../../shared/paths.ts';
+import { getBookDataPath } from '../../skills/shared/paths.ts';
 
 interface VerifyResult {
   stage: string;

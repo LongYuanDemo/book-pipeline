@@ -44,11 +44,8 @@ bookInfo.ts
 ## 目录结构
 
 ```
-skills/                          # 各环节 Skill（AI Agent 可读 + 可执行）
-├── pipeline.sh                  # 主流水线编排脚本
-├── pipeline-orchestrator/AGENT.md   # Agent 执行指南（依赖图、错误处理策略）
-├── shared/                      # 共享工具库（llm/tts/markdown/paths/types/validator/coze/deepseek）
-├── source-parser/               # 源文件解析
+skills/                          # 每个子目录 = 一个 Skill（SKILL.md + scripts/[+ references/]）
+├── source-parser/               # 源文件解析 → sourceParsed.ts
 ├── book-info-generator/         # 书籍元数据生成（中枢；对齐 sourceParsed id）
 ├── chapter-content-generator/   # 章节内容 + AI 增强（含 aiEnhancement 质量门）
 ├── anki-card-generator/         # 闪卡 + 测验
@@ -56,10 +53,20 @@ skills/                          # 各环节 Skill（AI Agent 可读 + 可执行
 ├── knowledge-map-generator/     # 知识地图（实体抽取 + 关系构建 + 质量门 + 反思重跑）
 ├── video-keyframe-extractor/    # 视频关键帧提取
 ├── monitor-dashboard-generator/ # 工程监控看板生成
-└── orchestrator/                # 编排器脚本
+└── shared/                      # ⚠️ 支持库，非 Skill（llm/tts/markdown/paths/types/validator/coze/deepseek）
+
+orchestration/                   # 流水线编排（非 Skill）
+├── AGENT.md                     # 总控 Agent 执行指南（依赖图、错误处理策略）
+├── pipeline.sh                  # 主流水线编排脚本
+└── scripts/                     # run-pipeline.ts（串联运行器）+ verify-content-integrity.ts
 
 scripts/                         # 辅助脚本（json-to-source / extract-html / verify-book / 批量构建等）
 ```
+
+> **skills/ 目录契约**：每个子目录都是一个可被 Agent 发现的 Skill（含带
+> frontmatter 的 `SKILL.md`）。唯一例外是 `skills/shared/`——它是所有 Skill 共享的
+> 支持库，不是 Skill。流水线编排（运行器、总控文档、shell）统一放在顶层
+> `orchestration/`，不与 Skill 混放。
 
 ## 流水线执行顺序
 

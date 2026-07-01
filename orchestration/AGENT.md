@@ -541,7 +541,7 @@ BOOK_ID={bookId} npm run build
 如果所有依赖已满足，可直接使用总控脚本：
 
 ```bash
-npx tsx skills/orchestrator/scripts/run-pipeline.ts --book-id {bookId}
+npx tsx orchestration/scripts/run-pipeline.ts --book-id {bookId}
 ```
 
 该脚本会自动按顺序执行 6 个 Skill（不含 source-parser，因为它已集成在 shared 中）。
@@ -571,8 +571,8 @@ npx tsx skills/orchestrator/scripts/run-pipeline.ts --book-id {bookId}
 | 音频资源 | `public/audio/` |
 | 视频资源 | `public/videos/` |
 | 视频帧图 | `public/video-frames/` |
-| 总控脚本 | `skills/orchestrator/scripts/run-pipeline.ts` |
-| Pipeline Shell | `skills/pipeline.sh` |
+| 总控脚本 | `orchestration/scripts/run-pipeline.ts` |
+| Pipeline Shell | `orchestration/pipeline.sh` |
 
 ## 附录：共享工具
 
